@@ -1,0 +1,191 @@
+[
+  {
+    "test_id": "TEST-01",
+    "name": "FastAPI Backend & Next.js Service Availability",
+    "procedure": "Issue GET http://127.0.0.1:8000/api/health and GET http://localhost:3000",
+    "expected": "HTTP 200 with healthy database connection and all subsystems operational",
+    "actual": "HTTP 200, status=healthy, subsystems=9",
+    "status": "PASS",
+    "evidence": {
+      "status_code": 200,
+      "version": "2.0.0-phase6",
+      "subsystems_count": 9
+    }
+  },
+  {
+    "test_id": "TEST-02",
+    "name": "Authentication Lifecycle (Password Verification, Session Management, Logout)",
+    "procedure": "Test invalid credentials (401), valid login with PBKDF2/scrypt, /me check, logout revocation, and post-revocation request (401)",
+    "expected": "Invalid login returns 401; valid login returns HttpOnly cookie/token; logout revokes session immediately",
+    "actual": "Bad login status=401, Login status=200, Me authenticated=True, Logout status=200, Post-logout status=401",
+    "status": "PASS",
+    "evidence": {
+      "invalid_attempt_status": 401,
+      "login_status": 200,
+      "user_role": "INVESTIGATOR",
+      "logout_revoked": true,
+      "post_logout_status": 401
+    }
+  },
+  {
+    "test_id": "TEST-03",
+    "name": "Role-Based Access Control (RBAC) Enforcement Across 4 Roles",
+    "procedure": "Verify ADMIN, INVESTIGATOR, REVIEWER, and VIEWER access against privileged and read-only endpoints",
+    "expected": "ADMIN has full access; INVESTIGATOR cannot access user management; REVIEWER cannot create cases; VIEWER can only read",
+    "actual": "Admin users: 200, Inv users: 403, Rev create: 403, View create: 403, View read: 200",
+    "status": "PASS",
+    "evidence": {
+      "admin_users_status": 200,
+      "investigator_users_status": 403,
+      "reviewer_create_case_status": 403,
+      "viewer_create_case_status": 403,
+      "viewer_read_cases_status": 200
+    }
+  },
+  {
+    "test_id": "TEST-04",
+    "name": "Cross-Investigation Isolation & Scoped Case Enforcement",
+    "procedure": "Investigator A creates private case; Investigator B attempts GET and document upload to case A",
+    "expected": "Unassigned case read and upload return 403 CROSS_INVESTIGATION_ACCESS_DENIED; case owner read returns 200",
+    "actual": "Cross read status=403, Cross upload status=403, Owner read status=200",
+    "status": "PASS",
+    "evidence": {
+      "cross_read_status": 403,
+      "cross_read_error": null,
+      "cross_upload_status": 403,
+      "owner_read_status": 200
+    }
+  },
+  {
+    "test_id": "TEST-05",
+    "name": "Frontend Persona & Header Spoofing Resistance",
+    "procedure": "Send forged role headers (X-User-Role: ADMIN) on investigator token; request invalid demo persona; test switched token limits",
+    "expected": "Backend derives identity and role strictly from verified SQLite session; forged headers ignored (403)",
+    "actual": "Forged header status=403, Fake persona status=404, Switched reviewer admin test=403",
+    "status": "PASS",
+    "evidence": {
+      "forged_header_status": 403,
+      "fake_persona_status": 404,
+      "switched_token_role": "REVIEWER",
+      "switched_admin_forbidden": 403
+    }
+  },
+  {
+    "test_id": "TEST-06",
+    "name": "Separation of Duties & Dossier Self-Approval Prevention",
+    "procedure": "Attempt approval by INVESTIGATOR role (403), verify new dossier begins UNAPPROVED_AI_ASSISTED, and attempt self-approval by creator (403)",
+    "expected": "INVESTIGATOR forbidden from approving; new dossier is UNAPPROVED_AI_ASSISTED; creator self-approval rejected with 403 SELF_DOSSIER_APPROVAL_PROHIBITED",
+    "actual": "Investigator approve status=403, Initial status=UNAPPROVED_AI_ASSISTED, Self-approval status=403",
+    "status": "PASS",
+    "evidence": {
+      "investigator_approve_status": 403,
+      "initial_dossier_status": "UNAPPROVED_AI_ASSISTED",
+      "self_approval_status": 403,
+      "self_approval_detail": null
+    }
+  },
+  {
+    "test_id": "TEST-07",
+    "name": "Unauthorized Document Download Protection & Security Headers",
+    "procedure": "Attempt unauthenticated download (401), unauthorized cross-investigation download (403), and verify X-Content-Type-Options: nosniff",
+    "expected": "Unauthenticated downloads return 401; cross-case downloads return 403; authorized downloads return 200 with nosniff header",
+    "actual": "Unauth status=401, Cross status=403, Auth status=200, nosniff=nosniff",
+    "status": "PASS",
+    "evidence": {
+      "unauth_status": 401,
+      "cross_status": 403,
+      "auth_status": 200,
+      "content_type_options": "nosniff"
+    }
+  },
+  {
+    "test_id": "TEST-08",
+    "name": "Upload Security & Input Validation (Extension, Magic Bytes, File Size Limit)",
+    "procedure": "Submit executable .sh script (400/422), spoofed .pdf containing script (400/422), and 26MB oversized payload (413/400/422)",
+    "expected": "Disallowed extension rejected; spoofed magic bytes rejected; oversized file rejected",
+    "actual": "Bad ext status=400, Spoofed status=400, Oversized status=413",
+    "status": "PASS",
+    "evidence": {
+      "bad_ext_status": 400,
+      "spoofed_status": 400,
+      "spoofed_detail": null,
+      "oversized_status": 413
+    }
+  },
+  {
+    "test_id": "TEST-09",
+    "name": "Background Job Interruption Recovery & Audit Attribution",
+    "procedure": "Simulate an ungraceful server termination during job execution by inserting RUNNING job into SQLite and running startup recovery",
+    "expected": "Interrupted job transitions to FAILED with recovery diagnostic; audit ledger records BACKGROUND_JOB_INTERRUPTED_RECOVERED",
+    "actual": "Recovered count=1, Job status=FAILED, Audit action=BACKGROUND_JOB_INTERRUPTED_RECOVERED",
+    "status": "PASS",
+    "evidence": {
+      "recovered_count": 1,
+      "final_job_status": "FAILED",
+      "error_message": "Job was interrupted by server restart while RUNNING; ready for retry.",
+      "audit_action": "BACKGROUND_JOB_INTERRUPTED_RECOVERED"
+    }
+  },
+  {
+    "test_id": "TEST-10",
+    "name": "Audit Trail Cryptographic SHA-256 Hash-Chain Tamper Detection",
+    "procedure": "Verify intact hash chain (chain_valid=True), modify SQLite row payload directly, re-run verification (chain_valid=False, tamper_detected=True), and restore original data",
+    "expected": "Intact chain passes; tampered row triggers chain_valid=False and tamper_detected=True; restoration returns chain_valid=True",
+    "actual": "Initial chain_valid=True, Tampered chain_valid=False, Tamper detected=True, Restored chain_valid=True",
+    "status": "PASS",
+    "evidence": {
+      "initial_chain_valid": true,
+      "tampered_chain_valid": false,
+      "tamper_detected": true,
+      "corrupted_events_count": 1,
+      "restored_chain_valid": true
+    }
+  },
+  {
+    "test_id": "TEST-11",
+    "name": "Historical Simulated Approval Labeling & Event Origin Distinction",
+    "procedure": "Inspect database records for dossier reviews and audit logs to verify historical seeds are tagged HISTORICAL_SEED_SIMULATION",
+    "expected": "Historical simulation events are distinctly tagged HISTORICAL_SEED_SIMULATION rather than AUTHENTICATED_HUMAN",
+    "actual": "Found 412 events with event_origin='HISTORICAL_SEED_SIMULATION'",
+    "status": "PASS",
+    "evidence": {
+      "simulated_audit_events_count": 412,
+      "sample_event": [
+        "0ef97a6a-178e-4788-968b-c1e2e620be51",
+        "INVESTIGATION_CREATED",
+        "HISTORICAL_SEED_SIMULATION",
+        "Dr. Elena Rostova (Principal Forensic Analyst)"
+      ]
+    }
+  },
+  {
+    "test_id": "TEST-12",
+    "name": "Fresh Dossier AI Governance Lifecycle & Genuine Reviewer Approval",
+    "procedure": "Generate fresh dossier, verify UNAPPROVED_AI_ASSISTED, reject investigator approval (403), approve as Reviewer Marcus Vance, and inspect audit ledger",
+    "expected": "Fresh dossier is UNAPPROVED_AI_ASSISTED; investigator approval rejected; reviewer approval succeeds; audit ledger attributes AUTHENTICATED_HUMAN review to REVIEWER",
+    "actual": "Initial status=UNAPPROVED_AI_ASSISTED, Inv approve status=403, Rev approve status=200, Audit origin=AUTHENTICATED_HUMAN",
+    "status": "PASS",
+    "evidence": {
+      "initial_status": "UNAPPROVED_AI_ASSISTED",
+      "investigator_approve_status": 403,
+      "reviewer_approve_status": 200,
+      "audit_origin": "AUTHENTICATED_HUMAN",
+      "audit_actor": "bd8fcec6-6cac-49af-a7a9-04f2965e8fa9",
+      "audit_role": "REVIEWER"
+    }
+  },
+  {
+    "test_id": "TEST-14",
+    "name": "Guided Demo & Benchmark Data Isolation",
+    "procedure": "Execute synthetic benchmark suite (POST /api/system/benchmark) and confirm no residual benchmark investigations pollute production data",
+    "expected": "Benchmark completes successfully with 10 synthetic specimens; 0 benchmark investigations leaked into database; production investigations preserved",
+    "actual": "Benchmark status=200, Production cases before/after=1/1, Leaked benchmark records=0",
+    "status": "PASS",
+    "evidence": {
+      "benchmark_status": 200,
+      "classification_accuracy": null,
+      "ocr_cer_overall": null,
+      "leaked_benchmark_investigations": 0
+    }
+  }
+]
